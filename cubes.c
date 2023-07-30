@@ -1,8 +1,101 @@
 #include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 #include "cube_t.h"
+#include "rotations.h"
 
 static cube_list_t cubes_by_count[MAX_DIM];
+
+static void normalize_cube(const cube_t *restrict cube,
+        cube_t *restrict normalized) {
+    /* Iterate through all the rotations and find the lexicographically
+     * earliest polycube according to coordinates in order to find "normalized"
+     * form. We will do this by iterating down the coordinates of the polycube
+     * in a manner corresponding to each of the 24 possible rotations defined
+     * in rotations.h. */
+    bool rotation_active[NUM_ROTATIONS];
+    bool rotation_found[NUM_ROTATIONS];
+    memset(rotation_active, true, sizeof(rotation_active));
+
+    size_t lengths_by_axis[] = { cube->x_len, cube->y_len, cube->z_len };
+
+    struct rotation_spec *norm_rot;
+    size_t found_count = 0;
+    for (size_t index = 0;
+            found_count != 1
+                && index < cube->x_len * cube->y_len * cube->z_len;
+            index++) {
+        memset(rotation_found, false, sizeof(rotation_found));
+        found_count = 0;
+
+        for (size_t i = 0; i < NUM_ROTATIONS; i++) {
+            /* Skip rotations marked to skip in previous iterations. */
+            if (!rotation_active[i]) {
+                continue;
+            }
+
+            struct rotation_spec *rot = &rotations_list[i];
+
+            /* Skip rotations where the lengths of axes in order are not in
+             * descending order. */
+            if (lengths_by_axis[rot->axis_order[0]]
+                        < lengths_by_axis[rot->axis_order[1]]
+                    || lengths_by_axis[rot->axis_order[1]]
+                        < lengths_by_axis[3 - rot->axis_order[0] - rot->axis_order[1]]) {
+                rotation_active[i] = false;
+                continue;
+            }
+
+            /* Get projected rotation coordinates onto the current view of the
+             * polycube. */
+            size_t proj_x, proj_y, proj_z;
+            rotation_get_projection(rot, index, cube->x_len, cube->y_len,
+                    cube->z_len, &proj_x, &proj_y, &proj_z);
+
+            if (cube->coords[proj_x][proj_y][proj_z]) {
+                rotation_found[i] = true;
+                found_count++;
+                if (found_count == 1) {
+                    norm_rot = rot;
+                }
+            }
+        }
+
+        if (found_count > 1) {
+            for (size_t i = 0; i < NUM_ROTATIONS; i++) {
+                if (!rotation_active[i]) {
+                    continue;
+                }
+
+                if (!rotation_found[i]) {
+                    rotation_active[i] = false;
+                }
+            }
+        }
+    }
+
+    /* Build normalized cube. */
+    *normalized = (cube_t) {
+        .coords = { { { 0 } } },
+        .x_len = lengths_by_axis[norm_rot->axis_order[0]],
+        .y_len = lengths_by_axis[norm_rot->axis_order[1]],
+        .z_len = lengths_by_axis[3 - norm_rot->axis_order[0] - norm_rot->axis_order[1]],
+    };
+
+    for (size_t x = 0; x < normalized->x_len; x++) {
+        for (size_t y = 0; y < normalized->y_len; y++) {
+            for (size_t z = 0; z < normalized->z_len; z++) {
+                size_t index =
+                    (x * normalized->y_len + y) * normalized->z_len + z;
+                size_t proj_x, proj_y, proj_z;
+                rotation_get_projection(norm_rot, index, cube->x_len,
+                        cube->y_len, cube->z_len, &proj_x, &proj_y, &proj_z);
+                normalized->coords[x][y][z] =
+                    cube->coords[proj_x][proj_y][proj_z];
+            }
+        }
+    }
+}
 
 static void find_next_cubes(const cube_t *cube) {
     /* Clone 3 new polycubes each shifted 1 in a positive direction to create a
@@ -77,7 +170,9 @@ static void find_next_cubes(const cube_t *cube) {
                     }
                 }
 
-                (void) candidate;
+                /* Get normalized cube. */
+                cube_t normalized;
+                normalize_cube(&candidate, &normalized);
             }
         }
     }

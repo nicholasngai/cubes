@@ -2,6 +2,7 @@
 #define ROTATIONS_H
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #define ROTATION_X_AXIS 0
 #define ROTATION_Y_AXIS 1
@@ -45,6 +46,49 @@ static struct rotation_spec rotations_list[] = {
     { true, true, true, { ROTATION_X_AXIS, ROTATION_Z_AXIS } },
     { true, true, true, { ROTATION_Z_AXIS, ROTATION_Y_AXIS } },
 };
+
+static inline void rotation_get_projection(struct rotation_spec *rot,
+        size_t index, size_t x_len, size_t y_len, size_t z_len, size_t *proj_x,
+        size_t *proj_y, size_t *proj_z) {
+    if (rot->axis_order[0] == ROTATION_X_AXIS) {
+        *proj_x = index / (y_len * z_len);
+        if (rot->axis_order[1] == ROTATION_Y_AXIS) {
+            *proj_y = index % (y_len * z_len) / z_len;
+            *proj_z = index % z_len;
+        } else {
+            *proj_z = index % (y_len * z_len) / y_len;
+            *proj_y = index % y_len;
+        }
+    } else if (rot->axis_order[0] == ROTATION_Y_AXIS) {
+        *proj_y = index / (x_len * z_len);
+        if (rot->axis_order[1] == ROTATION_X_AXIS) {
+            *proj_x = index % (x_len * z_len) / z_len;
+            *proj_z = index % z_len;
+        } else {
+            *proj_z = index % (x_len * z_len) / x_len;
+            *proj_x = index % x_len;
+        }
+    } else {
+        *proj_z = index / (x_len * y_len);
+        if (rot->axis_order[1] == ROTATION_X_AXIS) {
+            *proj_x = index % (x_len * y_len) / y_len;
+            *proj_y = index % y_len;
+        } else {
+            *proj_y = index % (x_len * y_len) / x_len;
+            *proj_x = index % x_len;
+        }
+    }
+
+    if (rot->x_neg) {
+        *proj_x = x_len - *proj_x - 1;
+    }
+    if (rot->y_neg) {
+        *proj_y = y_len - *proj_y - 1;
+    }
+    if (rot->z_neg) {
+        *proj_z = z_len - *proj_z - 1;
+    }
+}
 
 #define NUM_ROTATIONS (sizeof(rotations_list) / sizeof(*rotations_list))
 
