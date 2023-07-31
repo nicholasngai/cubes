@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <search.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -29,7 +30,7 @@ static void normalize_cube(const cube_t *restrict cube,
 
     size_t lengths_by_axis[] = { cube->x_len, cube->y_len, cube->z_len };
 
-    struct rotation_spec *norm_rot;
+    struct rotation_spec *norm_rot = NULL;
     size_t found_count = 0;
     for (size_t index = 0;
             found_count != 1
@@ -83,6 +84,8 @@ static void normalize_cube(const cube_t *restrict cube,
             }
         }
     }
+
+    assert(norm_rot != NULL);
 
     /* Build normalized cube. */
     *normalized = (cube_t) {
