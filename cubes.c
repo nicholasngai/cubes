@@ -38,7 +38,6 @@ static void normalize_cube(const cube_t *restrict cube,
             found_count != 1
                 && index < cube->x_len * cube->y_len * cube->z_len;
             index++) {
-        memset(rotation_found, false, sizeof(rotation_found));
         found_count = 0;
 
         for (size_t i = 0; i < NUM_ROTATIONS; i++) {
@@ -71,6 +70,8 @@ static void normalize_cube(const cube_t *restrict cube,
                 if (found_count == 1) {
                     norm_rot = rot;
                 }
+            } else {
+                rotation_found[i] = false;
             }
         }
 
