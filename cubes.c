@@ -1,10 +1,20 @@
+#include <search.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "cube_t.h"
+#include "defs.h"
 #include "rotations.h"
 
-static cube_list_t cubes_by_count[MAX_DIM];
+struct cube_stat {
+    size_t count;
+    void *cube_tree;
+    cube_t *cube_list;
+};
+
+static struct cube_stat all_cubes[MAX_DIM];
 
 static void normalize_cube(const cube_t *restrict cube,
         cube_t *restrict normalized) {
@@ -97,7 +107,28 @@ static void normalize_cube(const cube_t *restrict cube,
     }
 }
 
-static void find_next_cubes(const cube_t *cube) {
+static int cube_comparator(const void *a_, const void *b_) {
+    const cube_t *a = a_;
+    const cube_t *b = b_;
+    if (a->x_len > b->x_len) {
+        return 1;
+    } else if (a->x_len < b->x_len) {
+        return -1;
+    } else if (a->y_len > b->y_len) {
+        return 1;
+    } else if (a->y_len < b->y_len) {
+        return -1;
+    } else if (a->z_len > b->z_len) {
+        return 1;
+    } else if (a->z_len < b->z_len) {
+        return -1;
+    } else {
+        return memcmp(a->coords, b->coords, sizeof(a->coords));
+    }
+}
+
+static void find_next_cubes_for_cube(const cube_t *cube,
+        struct cube_stat *next_stat) {
     /* Clone 3 new polycubes each shifted 1 in a positive direction to create a
      * gap all around the cube. */
     cube_t shifted_x = {
@@ -123,6 +154,14 @@ static void find_next_cubes(const cube_t *cube) {
                 shifted_z.coords[i][j][k + 1] = cube->coords[i][j][k];
             }
         }
+    }
+
+    /* Allocate heap space for normalized cube since they are ultimately
+     * placed on the stack. */
+    cube_t *normalized = malloc(sizeof(*normalized));
+    if (!normalized) {
+        perror("malloc normalized");
+        exit(EXIT_FAILURE);
     }
 
     /* Try inserting a new cube at each potential position and insert it into
@@ -171,16 +210,83 @@ static void find_next_cubes(const cube_t *cube) {
                 }
 
                 /* Get normalized cube. */
-                cube_t normalized;
-                normalize_cube(&candidate, &normalized);
+                normalize_cube(&candidate, normalized);
+
+                /* Try to insert normalized cube into the tree for the next
+                 * size. */
+                cube_t **inserted =
+                    tsearch(normalized, &next_stat->cube_tree, cube_comparator);
+                if (!inserted) {
+                    perror("tsearch normalized");
+                    exit(EXIT_FAILURE);
+                }
+                if (*inserted == normalized) {
+                    /* If inserted, allocate a new normalized cube buffer. */
+                    normalized = malloc(sizeof(*normalized));
+                    if (!normalized) {
+                        perror("malloc normalized");
+                        exit(EXIT_FAILURE);
+                    }
+
+                    /* Increment found count. */
+                    next_stat->count++;
+                }
             }
         }
+    }
+
+    /* Free remaining extra normalized cube. */
+    free(normalized);
+}
+
+static struct cube_stat *flatten_tree_action_cube_stat;
+static size_t flatten_tree_action_list_index;
+static void flatten_tree_action(const void *cube_, VISIT which, int depth UNUSED) {
+    if (which != postorder && which != leaf) {
+        return;
+    }
+
+    cube_t *const *cube = cube_;
+
+    flatten_tree_action_cube_stat->cube_list[flatten_tree_action_list_index] =
+        **cube;
+    flatten_tree_action_list_index++;
+}
+
+static void find_next_cubes_for_size(size_t size) {
+    struct cube_stat *cur_stat = &all_cubes[size - 1];
+    struct cube_stat *next_stat = &all_cubes[size];
+
+    /* Find next cubes. */
+    for (size_t i = 0; i < cur_stat->count; i++) {
+        find_next_cubes_for_cube(&cur_stat->cube_list[i], next_stat);
+    }
+
+    /* Flatten search tree into an array. */
+    next_stat->cube_list = malloc(next_stat->count * sizeof(cube_t));
+    if (!next_stat->cube_list) {
+        perror("malloc next_stat cube_list");
+        exit(EXIT_FAILURE);
+    }
+    flatten_tree_action_cube_stat = next_stat;
+    flatten_tree_action_list_index = 0;
+    twalk(next_stat->cube_tree, flatten_tree_action);
+
+    /* Destroy search tree. */
+    while (next_stat->cube_tree) {
+        cube_t *cube = *((cube_t **) next_stat->cube_tree);
+        tdelete(cube, &next_stat->cube_tree, cube_comparator);
+        free(cube);
     }
 }
 
 int main(void) {
     /* First polycube: 1x1x1 single cube. */
-    cube_t *first_cube = cube_list_append(&cubes_by_count[0]);
+    cube_t *first_cube = malloc(sizeof(cube_t));
+    if (!first_cube) {
+        perror("malloc first cube");
+        exit(EXIT_FAILURE);
+    }
     *first_cube = (cube_t) {
         .coords = { { { true } } },
         .x_len = 1,
@@ -188,7 +294,16 @@ int main(void) {
         .z_len = 1,
     };
 
-    find_next_cubes(first_cube);
+    /* Add first cube to list. */
+    all_cubes[0].cube_list = first_cube;
+    all_cubes[0].count = 1;
+
+    /* Find cubes. */
+    find_next_cubes_for_size(1);
+
+    /* Free resources. */
+    free(all_cubes[0].cube_list);
+    free(all_cubes[1].cube_list);
 
     return 0;
 }
