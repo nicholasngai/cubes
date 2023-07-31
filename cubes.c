@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include "cube_t.h"
 #include "defs.h"
 #include "rotations.h"
@@ -284,15 +285,60 @@ static void find_next_cubes_for_size(size_t size) {
     }
 }
 
+static void dump_cubes(size_t size, const struct cube_stat *stat) {
+    printf("size = %zu\n\n", size);
+    for (size_t i = 0; i < stat->count; i++) {
+        cube_t *cube = &stat->cube_list[i];
+        if (i > 0) {
+            printf("\n");
+        }
+        for (size_t y = 0; y < cube->y_len; y++) {
+            for (size_t z = 0; z < cube->z_len; z++) {
+                if (z > 0) {
+                    printf("   ");
+                }
+                for (size_t x = 0; x < cube->x_len; x++) {
+                    if (x > 0) {
+                        printf(" ");
+                    }
+                    printf("%d", cube->coords[x][y][z]);
+                }
+            }
+            printf("\n\n");
+        }
+    }
+}
+
+static void usage(char **argv) {
+    printf("Usage: %s [-d] <max size>\n", argv[0]);
+    printf("Usage: %s -h\n", argv[0]);
+}
+
 int main(int argc, char **argv) {
-    if (argc < 2) {
-        printf("Usage: %s <max size>\n", argv[0]);
+    /* Parse optargs. */
+    bool should_dump_cubes = false;
+    int opt;
+    while ((opt = getopt(argc, argv, "dh")) != -1) {
+        switch (opt) {
+        case 'd':
+            should_dump_cubes = true;
+            break;
+        case 'h':
+        default:
+            usage(argv);
+            exit(0);
+            break;
+        }
+    }
+
+    if (argc - optind + 1 < 2) {
+        usage(argv);
         exit(EXIT_FAILURE);
     }
 
     /* Parse args. */
     errno = 0;
-    size_t max_size = strtoull(argv[1], NULL, 10);
+    size_t max_size = strtoull(argv[optind], NULL, 10);
     if (errno != 0) {
         perror("strtoull max_size");
         exit(EXIT_FAILURE);
@@ -301,6 +347,7 @@ int main(int argc, char **argv) {
         printf("Max size must be greater than 0!\n");
         exit(EXIT_FAILURE);
     }
+    optind++;
 
     /* First polycube: 1x1x1 single cube. */
     cube_t *first_cube = malloc(sizeof(cube_t));
@@ -318,10 +365,17 @@ int main(int argc, char **argv) {
     /* Add first cube to list. */
     all_cubes[0].cube_list = first_cube;
     all_cubes[0].count = 1;
+    if (should_dump_cubes) {
+        dump_cubes(1, &all_cubes[0]);
+    }
 
     /* Find cubes. */
     for (size_t size = 1; size < max_size; size++) {
         find_next_cubes_for_size(size);
+
+        if (should_dump_cubes) {
+            dump_cubes(size + 1, &all_cubes[size]);
+        }
     }
 
     /* Free resources. */
