@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <errno.h>
 #include <search.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -283,7 +284,24 @@ static void find_next_cubes_for_size(size_t size) {
     }
 }
 
-int main(void) {
+int main(int argc, char **argv) {
+    if (argc < 2) {
+        printf("Usage: %s <max size>\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
+
+    /* Parse args. */
+    errno = 0;
+    size_t max_size = strtoull(argv[1], NULL, 10);
+    if (errno != 0) {
+        perror("strtoull max_size");
+        exit(EXIT_FAILURE);
+    }
+    if (max_size == 0) {
+        printf("Max size must be greater than 0!\n");
+        exit(EXIT_FAILURE);
+    }
+
     /* First polycube: 1x1x1 single cube. */
     cube_t *first_cube = malloc(sizeof(cube_t));
     if (!first_cube) {
@@ -302,11 +320,14 @@ int main(void) {
     all_cubes[0].count = 1;
 
     /* Find cubes. */
-    find_next_cubes_for_size(1);
+    for (size_t size = 1; size < max_size; size++) {
+        find_next_cubes_for_size(size);
+    }
 
     /* Free resources. */
-    free(all_cubes[0].cube_list);
-    free(all_cubes[1].cube_list);
+    for (size_t size = 1; size <= max_size; size++) {
+        free(all_cubes[size - 1].cube_list);
+    }
 
     return 0;
 }
