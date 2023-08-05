@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <errno.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -11,10 +12,10 @@
 #include "hash.h"
 #include "rotations.h"
 
-#define HASH_SIZE 256
+#define HASH_SIZE 4096
 
 struct cube_stat {
-    size_t count;
+    atomic_size_t count;
     struct hash cube_hash;
     cube_t *cube_list;
 };
@@ -253,6 +254,7 @@ static void find_next_cubes_for_size(size_t size) {
     }
 
     /* Find next cubes. */
+#pragma omp parallel for
     for (size_t i = 0; i < cur_stat->count; i++) {
         find_next_cubes_for_cube(&cur_stat->cube_list[i], next_stat);
     }

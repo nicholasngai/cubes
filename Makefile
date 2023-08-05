@@ -6,8 +6,8 @@ SRCS = $(OBJS:.o=.c)
 DEPS = $(OBJS:.o=.d)
 
 CPPFLAGS = -I. -MMD -D_POSIX_C_SOURCE=200809L
-CFLAGS = -std=c17 -pedantic -O3 -Wall -Wextra -Werror
-LDFLAGS =
+CFLAGS = -std=c17 -pedantic -O3 -Wall -Wextra -Werror -fopenmp
+LDFLAGS = -fopenmp
 LDLIBS =
 
 $(TARGET): $(OBJS)
