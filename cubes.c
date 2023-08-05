@@ -64,7 +64,7 @@ static void normalize_cube(const cube_t *restrict cube,
             rotation_get_projection(rot, index, cube->x_len, cube->y_len,
                     cube->z_len, &proj_x, &proj_y, &proj_z);
 
-            if (cube->coords[proj_x][proj_y][proj_z]) {
+            if (cube_get(cube, proj_x, proj_y, proj_z)) {
                 rotation_found[i] = true;
                 found_count++;
                 if (found_count == 1) {
@@ -92,7 +92,6 @@ static void normalize_cube(const cube_t *restrict cube,
 
     /* Build normalized cube. */
     *normalized = (cube_t) {
-        .coords = { { { 0 } } },
         .x_len = lengths_by_axis[norm_rot->axis_order[0]],
         .y_len = lengths_by_axis[norm_rot->axis_order[1]],
         .z_len = lengths_by_axis[3 - norm_rot->axis_order[0] - norm_rot->axis_order[1]],
@@ -106,8 +105,9 @@ static void normalize_cube(const cube_t *restrict cube,
                 size_t proj_x, proj_y, proj_z;
                 rotation_get_projection(norm_rot, index, cube->x_len,
                         cube->y_len, cube->z_len, &proj_x, &proj_y, &proj_z);
-                normalized->coords[x][y][z] =
-                    cube->coords[proj_x][proj_y][proj_z];
+                if (cube_get(cube, proj_x, proj_y, proj_z)) {
+                    cube_set(normalized, x, y, z);
+                }
             }
         }
     }
@@ -155,9 +155,11 @@ static void find_next_cubes_for_cube(const cube_t *cube,
     for (size_t i = 0; i < cube->x_len; i++) {
         for (size_t j = 0; j < cube->y_len; j++) {
             for (size_t k = 0; k < cube->z_len; k++) {
-                shifted_x.coords[i + 1][j][k] = cube->coords[i][j][k];
-                shifted_y.coords[i][j + 1][k] = cube->coords[i][j][k];
-                shifted_z.coords[i][j][k + 1] = cube->coords[i][j][k];
+                if (cube_get(cube, i, j, k)) {
+                    cube_set(&shifted_x, i + 1, j, k);
+                    cube_set(&shifted_y, i, j + 1, k);
+                    cube_set(&shifted_z, i, j, k + 1);
+                }
             }
         }
     }
@@ -178,17 +180,17 @@ static void find_next_cubes_for_cube(const cube_t *cube,
             for (size_t k = 0; k < cube->z_len + 2; k++) {
                 /* Skip locations already populated. */
                 if (i > 0 && j > 0 && k > 0
-                        && cube->coords[i - 1][j - 1][k - 1]) {
+                        && cube_get(cube, i - 1, j - 1, k - 1)) {
                     continue;
                 }
 
                 /* Skip locations not adjacent to a cube. */
-                if (!(i > 1 && j > 0 && k > 0 && cube->coords[i - 2][j - 1][k - 1])
-                        && !(i > 0 && j > 1 && k > 0 && cube->coords[i - 1][j - 2][k - 1])
-                        && !(i > 0 && j > 0 && k > 1 && cube->coords[i - 1][j - 1][k - 2])
-                        && !(j > 0 && k > 0 && cube->coords[i][j - 1][k - 1])
-                        && !(i > 0 && k > 0 && cube->coords[i - 1][j][k - 1])
-                        && !(i > 0 && j > 0 && cube->coords[i - 1][j - 1][k])) {
+                if (!(i > 1 && j > 0 && k > 0 && cube_get(cube, i - 2, j - 1, k - 1))
+                        && !(i > 0 && j > 1 && k > 0 && cube_get(cube, i - 1, j - 2, k - 1))
+                        && !(i > 0 && j > 0 && k > 1 && cube_get(cube, i - 1, j - 1, k - 2))
+                        && !(j > 0 && k > 0 && cube_get(cube, i, j - 1, k - 1))
+                        && !(i > 0 && k > 0 && cube_get(cube, i - 1, j, k - 1))
+                        && !(i > 0 && j > 0 && cube_get(cube, i - 1, j - 1, k))) {
                     continue;
                 }
 
@@ -196,16 +198,16 @@ static void find_next_cubes_for_cube(const cube_t *cube,
                 cube_t candidate;
                 if (i == 0) {
                     candidate = shifted_x;
-                    candidate.coords[i][j - 1][k - 1] = true;
+                    cube_set(&candidate, i, j - 1, k - 1);
                 } else if (j == 0) {
                     candidate = shifted_y;
-                    candidate.coords[i - 1][j][k - 1] = true;
+                    cube_set(&candidate, i - 1, j, k - 1);
                 } else if (k == 0) {
                     candidate = shifted_z;
-                    candidate.coords[i - 1][j - 1][k] = true;
+                    cube_set(&candidate, i - 1, j - 1, k);
                 } else {
                     candidate = *cube;
-                    candidate.coords[i - 1][j - 1][k - 1] = true;
+                    cube_set(&candidate, i - 1, j - 1, k - 1);
                     if (i == cube->x_len + 1) {
                         candidate.x_len++;
                     } else if (j == cube->y_len + 1) {
@@ -296,7 +298,7 @@ static void dump_cubes(size_t size, const struct cube_stat *stat) {
                     printf(" ");
                 }
                 for (size_t x = 0; x < cube->x_len; x++) {
-                    printf("%d", cube->coords[x][y][z]);
+                    printf("%d", cube_get(cube, x, y, z));
                 }
             }
             printf("\n");
@@ -352,11 +354,11 @@ int main(int argc, char **argv) {
         exit(EXIT_FAILURE);
     }
     *first_cube = (cube_t) {
-        .coords = { { { true } } },
         .x_len = 1,
         .y_len = 1,
         .z_len = 1,
     };
+    cube_set(first_cube, 0, 0, 0);
 
     /* Add first cube to list. */
     all_cubes[0].cube_list = first_cube;
