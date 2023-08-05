@@ -3,8 +3,12 @@
 
 #include <stddef.h>
 
+struct hash_bucket {
+    void *tree;
+};
+
 struct hash {
-    void **entries;
+    struct hash_bucket *buckets;
     size_t size;
 };
 

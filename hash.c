@@ -17,13 +17,19 @@ int hash_init(struct hash *hash, size_t size) {
     *hash = (struct hash) {
         .size = size,
     };
-    hash->entries = calloc(size, sizeof(*hash->entries));
-    if (!hash->entries) {
+    hash->buckets = malloc(size * sizeof(*hash->buckets));
+    if (!hash->buckets) {
         ret = -1;
         goto exit;
     }
+    for (size_t i = 0; i < size; i++) {
+        hash->buckets[i] = (struct hash_bucket) {
+            .tree = NULL,
+        };
+    }
 
     ret = 0;
+    goto exit;
 
 exit:
     return ret;
@@ -43,15 +49,15 @@ void hash_free(struct hash *hash,
             void *aux),
         void *aux) {
     for (size_t i = 0; i < hash->size; i++) {
-        void **tree_ptr = &hash->entries[i];
-        while (*tree_ptr) {
-            struct hash_entry *entry = *((struct hash_entry **) *tree_ptr);
-            tdelete(entry, tree_ptr, tree_comp);
+        struct hash_bucket *bucket = &hash->buckets[i];
+        while (bucket->tree) {
+            struct hash_entry *entry = *((struct hash_entry **) bucket->tree);
+            tdelete(entry, &bucket->tree, tree_comp);
             entry_callback(entry->key, entry->key_len, entry->value, aux);
             free(entry);
         }
     }
-    free(hash->entries);
+    free(hash->buckets);
 }
 
 static uint64_t compute_hash(const void *key_, size_t key_len) {
@@ -80,11 +86,10 @@ void *hash_search(struct hash *hash, const void *key, size_t key_len,
         .value = value,
     };
 
-    /* Find hash tree and try to insert. */
+    /* Find hash bucket and try to insert. */
     uint64_t hash_val = compute_hash(key, key_len);
-    size_t hash_idx = hash_val % hash->size;
-    void **tree_ptr = &hash->entries[hash_idx];
-    struct hash_entry **inserted = tsearch(entry, tree_ptr, tree_comp);
+    struct hash_bucket *bucket = &hash->buckets[hash_val % hash->size];
+    struct hash_entry **inserted = tsearch(entry, &bucket->tree, tree_comp);
     if (!inserted) {
         ret = NULL;
         goto exit_free_entry;
