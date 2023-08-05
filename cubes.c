@@ -366,6 +366,7 @@ int main(int argc, char **argv) {
     /* Add first cube to list. */
     all_cubes[0].cube_list = first_cube;
     all_cubes[0].count = 1;
+    printf("%2d: %zu\n", 1, all_cubes[0].count);
     if (should_dump_cubes) {
         dump_cubes(1, &all_cubes[0]);
     }
@@ -373,6 +374,8 @@ int main(int argc, char **argv) {
     /* Find cubes. */
     for (size_t size = 1; size < max_size; size++) {
         find_next_cubes_for_size(size);
+
+        printf("%2zu: %zu\n", size + 1, all_cubes[size].count);
 
         if (should_dump_cubes) {
             dump_cubes(size + 1, &all_cubes[size]);
