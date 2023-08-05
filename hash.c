@@ -1,8 +1,15 @@
 #include "hash.h"
+#include <search.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+struct hash_entry {
+    const void *key;
+    size_t key_len;
+    void *value;
+};
 
 int hash_init(struct hash *hash, size_t size) {
     int ret;
@@ -22,17 +29,26 @@ exit:
     return ret;
 }
 
+static int tree_comp(const void *a_, const void *b_) {
+    const struct hash_entry *a = a_;
+    const struct hash_entry *b = b_;
+    if (a->key_len != b->key_len) {
+        return (a->key_len > b->key_len) - (a->key_len < b->key_len);
+    }
+    return memcmp(a->key, b->key, a->key_len);
+}
+
 void hash_free(struct hash *hash,
         void entry_callback(const void *key, size_t key_len, void *value,
             void *aux),
         void *aux) {
     for (size_t i = 0; i < hash->size; i++) {
-        struct hash_entry *entry = hash->entries[i];
-        while (entry) {
+        void **tree_ptr = &hash->entries[i];
+        while (*tree_ptr) {
+            struct hash_entry *entry = *((struct hash_entry **) *tree_ptr);
+            tdelete(entry, tree_ptr, tree_comp);
             entry_callback(entry->key, entry->key_len, entry->value, aux);
-            struct hash_entry *next_entry = entry->next;
             free(entry);
-            entry = next_entry;
         }
     }
     free(hash->entries);
@@ -48,63 +64,43 @@ static uint64_t compute_hash(const void *key_, size_t key_len) {
     return hash;
 }
 
-static int key_comp(const void *key1, size_t key1_len, const void *key2,
-        size_t key2_len) {
-    if (key1_len != key2_len) {
-        return (key1_len > key2_len) - (key1_len < key2_len);
-    }
-    return memcmp(key1, key2, key1_len);
-}
-
 void *hash_search(struct hash *hash, const void *key, size_t key_len,
         void *value) {
     void *ret;
 
-    /* Find hash entry to insert ourselves into. */
-    uint64_t hash_val = compute_hash(key, key_len);
-    size_t hash_idx = hash_val % hash->size;
-    struct hash_entry **entry_ptr = &hash->entries[hash_idx];
-    while (1) {
-        struct hash_entry *entry = *entry_ptr;
-
-        /* Exit if reached end of linked list. */
-        if (!entry) {
-            break;
-        }
-
-        int comp = key_comp(entry->key, entry->key_len, key, key_len);
-
-        /* Return existing entry if we reached an entry with key matching
-         * ours. */
-        if (comp == 0) {
-            ret = entry->value;
-            goto exit;
-        }
-
-        /* Exit if we reached existing entry with key greater than ours. */
-        if (comp > 0) {
-            break;
-        }
-
-        entry_ptr = &entry->next;
-    }
-
-    /* Insert value into map. */
-    struct hash_entry *new_entry = malloc(sizeof(*new_entry));
-    if (!new_entry) {
+    /* Construct hash entry. */
+    struct hash_entry *entry = malloc(sizeof(*entry));
+    if (!entry) {
         ret = NULL;
         goto exit;
     }
-    *new_entry = (struct hash_entry) {
+    *entry = (struct hash_entry) {
         .key = key,
         .key_len = key_len,
         .value = value,
-        .next = *entry_ptr,
     };
-    *entry_ptr = new_entry;
 
-    ret = new_entry->value;
+    /* Find hash tree and try to insert. */
+    uint64_t hash_val = compute_hash(key, key_len);
+    size_t hash_idx = hash_val % hash->size;
+    void **tree_ptr = &hash->entries[hash_idx];
+    struct hash_entry **inserted = tsearch(entry, tree_ptr, tree_comp);
+    if (!inserted) {
+        ret = NULL;
+        goto exit_free_entry;
+    }
+    if (*inserted != entry) {
+        /* The value was already in the tree. Return its value. */
+        ret = (*inserted)->value;
+        free(entry);
+        goto exit;
+    }
 
+    ret = entry->value;
+    goto exit;
+
+exit_free_entry:
+    free(entry);
 exit:
     return ret;
 }

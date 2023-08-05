@@ -3,15 +3,8 @@
 
 #include <stddef.h>
 
-struct hash_entry {
-    const void *key;
-    size_t key_len;
-    void *value;
-    struct hash_entry *next;
-};
-
 struct hash {
-    struct hash_entry **entries;
+    void **entries;
     size_t size;
 };
 
