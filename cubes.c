@@ -1,6 +1,5 @@
 #include <assert.h>
 #include <errno.h>
-#include <search.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -9,11 +8,14 @@
 #include <unistd.h>
 #include "cube_t.h"
 #include "defs.h"
+#include "hash.h"
 #include "rotations.h"
+
+#define HASH_SIZE 256
 
 struct cube_stat {
     size_t count;
-    void *cube_tree;
+    struct hash cube_hash;
     cube_t *cube_list;
 };
 
@@ -113,26 +115,6 @@ static void normalize_cube(const cube_t *restrict cube,
     }
 }
 
-static int cube_comparator(const void *a_, const void *b_) {
-    const cube_t *a = a_;
-    const cube_t *b = b_;
-    if (a->x_len > b->x_len) {
-        return 1;
-    } else if (a->x_len < b->x_len) {
-        return -1;
-    } else if (a->y_len > b->y_len) {
-        return 1;
-    } else if (a->y_len < b->y_len) {
-        return -1;
-    } else if (a->z_len > b->z_len) {
-        return 1;
-    } else if (a->z_len < b->z_len) {
-        return -1;
-    } else {
-        return memcmp(a->coords, b->coords, sizeof(a->coords));
-    }
-}
-
 static void find_next_cubes_for_cube(const cube_t *cube,
         struct cube_stat *next_stat) {
     /* Clone 3 new polycubes each shifted 1 in a positive direction to create a
@@ -222,13 +204,14 @@ static void find_next_cubes_for_cube(const cube_t *cube,
 
                 /* Try to insert normalized cube into the tree for the next
                  * size. */
-                cube_t **inserted =
-                    tsearch(normalized, &next_stat->cube_tree, cube_comparator);
+                cube_t *inserted =
+                    hash_search(&next_stat->cube_hash, normalized->coords,
+                            sizeof(normalized->coords), normalized);
                 if (!inserted) {
-                    perror("tsearch normalized");
+                    perror("hash_search normalized");
                     exit(EXIT_FAILURE);
                 }
-                if (*inserted == normalized) {
+                if (inserted == normalized) {
                     /* If inserted, allocate a new normalized cube buffer. */
                     normalized = malloc(sizeof(*normalized));
                     if (!normalized) {
@@ -247,45 +230,44 @@ static void find_next_cubes_for_cube(const cube_t *cube,
     free(normalized);
 }
 
-static struct cube_stat *flatten_tree_action_cube_stat;
-static size_t flatten_tree_action_list_index;
-static void flatten_tree_action(const void *cube_, VISIT which, int depth UNUSED) {
-    if (which != postorder && which != leaf) {
-        return;
-    }
-
-    cube_t *const *cube = cube_;
-
-    flatten_tree_action_cube_stat->cube_list[flatten_tree_action_list_index] =
-        **cube;
-    flatten_tree_action_list_index++;
+struct flatten_hash_callback_aux {
+    cube_t *list;
+};
+static void flatten_hash_callback(const void *coords UNUSED,
+        size_t coords_len UNUSED, void *cube_, void *aux_) {
+    cube_t *cube = cube_;
+    struct flatten_hash_callback_aux *aux = aux_;
+    *aux->list = *cube;
+    aux->list++;
+    free(cube);
 }
 
 static void find_next_cubes_for_size(size_t size) {
     struct cube_stat *cur_stat = &all_cubes[size - 1];
     struct cube_stat *next_stat = &all_cubes[size];
 
+    /* Allocate next cube hash. */
+    if (hash_init(&next_stat->cube_hash, HASH_SIZE)) {
+        perror("hash_init");
+        exit(EXIT_FAILURE);
+    }
+
     /* Find next cubes. */
     for (size_t i = 0; i < cur_stat->count; i++) {
         find_next_cubes_for_cube(&cur_stat->cube_list[i], next_stat);
     }
 
-    /* Flatten search tree into an array. */
+    /* Flatten hash into an array and destroy the hash. */
     next_stat->cube_list = malloc(next_stat->count * sizeof(cube_t));
     if (!next_stat->cube_list) {
         perror("malloc next_stat cube_list");
         exit(EXIT_FAILURE);
     }
-    flatten_tree_action_cube_stat = next_stat;
-    flatten_tree_action_list_index = 0;
-    twalk(next_stat->cube_tree, flatten_tree_action);
-
-    /* Destroy search tree. */
-    while (next_stat->cube_tree) {
-        cube_t *cube = *((cube_t **) next_stat->cube_tree);
-        tdelete(cube, &next_stat->cube_tree, cube_comparator);
-        free(cube);
-    }
+    struct flatten_hash_callback_aux flatten_hash_callback_aux = {
+        .list = next_stat->cube_list,
+    };
+    hash_free(&next_stat->cube_hash, flatten_hash_callback,
+            &flatten_hash_callback_aux);
 }
 
 static void dump_cubes(size_t size, const struct cube_stat *stat) {
