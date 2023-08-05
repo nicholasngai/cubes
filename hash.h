@@ -2,9 +2,11 @@
 #define HASH_H
 
 #include <stddef.h>
+#include <threads.h>
 
 struct hash_bucket {
     void *tree;
+    mtx_t mutex;
 };
 
 struct hash {

@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <threads.h>
 
 struct hash_entry {
     const void *key;
@@ -26,11 +27,20 @@ int hash_init(struct hash *hash, size_t size) {
         hash->buckets[i] = (struct hash_bucket) {
             .tree = NULL,
         };
+        if (mtx_init(&hash->buckets[i].mutex, mtx_plain)) {
+            for (size_t j = 0; j < i; j++) {
+                mtx_destroy(&hash->buckets[j].mutex);
+            }
+            ret = -1;
+            goto exit_free_buckets;
+        }
     }
 
     ret = 0;
     goto exit;
 
+exit_free_buckets:
+    free(hash->buckets);
 exit:
     return ret;
 }
@@ -56,6 +66,7 @@ void hash_free(struct hash *hash,
             entry_callback(entry->key, entry->key_len, entry->value, aux);
             free(entry);
         }
+        mtx_destroy(&bucket->mutex);
     }
     free(hash->buckets);
 }
@@ -86,10 +97,17 @@ void *hash_search(struct hash *hash, const void *key, size_t key_len,
         .value = value,
     };
 
-    /* Find hash bucket and try to insert. */
+    /* Find hash bucket. */
     uint64_t hash_val = compute_hash(key, key_len);
     struct hash_bucket *bucket = &hash->buckets[hash_val % hash->size];
+
+    /* Try to insert. */
+    if (mtx_lock(&bucket->mutex)) {
+        ret = NULL;
+        goto exit_free_entry;
+    }
     struct hash_entry **inserted = tsearch(entry, &bucket->tree, tree_comp);
+    mtx_unlock(&bucket->mutex);
     if (!inserted) {
         ret = NULL;
         goto exit_free_entry;
