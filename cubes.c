@@ -290,23 +290,18 @@ static void dump_cubes(size_t size, const struct cube_stat *stat) {
     printf("size = %zu\n\n", size);
     for (size_t i = 0; i < stat->count; i++) {
         cube_t *cube = &stat->cube_list[i];
-        if (i > 0) {
-            printf("\n");
-        }
         for (size_t y = 0; y < cube->y_len; y++) {
             for (size_t z = 0; z < cube->z_len; z++) {
                 if (z > 0) {
-                    printf("   ");
+                    printf(" ");
                 }
                 for (size_t x = 0; x < cube->x_len; x++) {
-                    if (x > 0) {
-                        printf(" ");
-                    }
                     printf("%d", cube->coords[x][y][z]);
                 }
             }
-            printf("\n\n");
+            printf("\n");
         }
+        printf("\n");
     }
 }
 
