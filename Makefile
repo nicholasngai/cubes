@@ -1,6 +1,7 @@
 TARGET = cubes
 OBJS = \
-	cubes.o
+	cubes.o \
+	hash.o
 SRCS = $(OBJS:.o=.c)
 DEPS = $(OBJS:.o=.d)
 
