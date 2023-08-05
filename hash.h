@@ -1,12 +1,12 @@
 #ifndef HASH_H
 #define HASH_H
 
+#include <pthread.h>
 #include <stddef.h>
-#include <threads.h>
 
 struct hash_bucket {
     void *tree;
-    mtx_t mutex;
+    pthread_mutex_t mutex;
 };
 
 struct hash {
