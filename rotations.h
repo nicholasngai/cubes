@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include "cube_t.h"
 
 #define ROTATION_X_AXIS 0
 #define ROTATION_Y_AXIS 1
@@ -48,8 +49,8 @@ static struct rotation_spec rotations_list[] = {
 };
 
 static inline void rotation_get_projection(struct rotation_spec *rot,
-        size_t index, size_t x_len, size_t y_len, size_t z_len, size_t *proj_x,
-        size_t *proj_y, size_t *proj_z) {
+        size_t index, coord_t x_len, coord_t y_len, coord_t z_len,
+        coord_t *proj_x, coord_t *proj_y, coord_t *proj_z) {
     if (rot->axis_order[0] == ROTATION_X_AXIS) {
         *proj_x = index / (y_len * z_len);
         if (rot->axis_order[1] == ROTATION_Y_AXIS) {

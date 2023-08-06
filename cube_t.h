@@ -5,8 +5,10 @@
 
 #define MAX_DIM 20
 
+typedef unsigned char coord_t;
+
 typedef struct cube {
-    unsigned char coords[MAX_DIM][3];
+    coord_t coords[MAX_DIM][3];
 } cube_t;
 
 typedef struct cube_list {

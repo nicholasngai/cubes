@@ -23,20 +23,20 @@ struct cube_stat {
 static struct cube_stat all_cubes[MAX_DIM];
 
 struct cube_coords {
-    unsigned char coords[CEIL_DIV(MAX_DIM * MAX_DIM * MAX_DIM,  CHAR_BIT)];
-    size_t x_len;
-    size_t y_len;
-    size_t z_len;
+    coord_t coords[CEIL_DIV(MAX_DIM * MAX_DIM * MAX_DIM,  CHAR_BIT)];
+    coord_t x_len;
+    coord_t y_len;
+    coord_t z_len;
 };
 
-static inline bool coord_get(const struct cube_coords *coords, size_t x,
-        size_t y, size_t z) {
+static inline bool coord_get(const struct cube_coords *coords, coord_t x,
+        coord_t y, coord_t z) {
     size_t bit_idx = (x * MAX_DIM + y) * MAX_DIM + z;
     return (coords->coords[bit_idx / CHAR_BIT] >> (bit_idx % CHAR_BIT)) & 1;
 }
 
-static inline void coord_set(struct cube_coords *coords, size_t x, size_t y,
-        size_t z) {
+static inline void coord_set(struct cube_coords *coords, coord_t x, coord_t y,
+        coord_t z) {
     size_t bit_idx = (x * MAX_DIM + y) * MAX_DIM + z;
     coords->coords[bit_idx / CHAR_BIT] |= 1u << (bit_idx % CHAR_BIT);
 }
@@ -52,7 +52,7 @@ static void normalize_cube(const struct cube_coords *coords,
     bool rotation_found[NUM_ROTATIONS];
     memset(rotation_active, true, sizeof(rotation_active));
 
-    size_t lengths_by_axis[] = { coords->x_len, coords->y_len, coords->z_len };
+    coord_t lengths_by_axis[] = { coords->x_len, coords->y_len, coords->z_len };
 
     struct rotation_spec *norm_rot = NULL;
     size_t found_count = 0;
@@ -82,7 +82,7 @@ static void normalize_cube(const struct cube_coords *coords,
 
             /* Get projected rotation coordinates onto the current view of the
              * polycube. */
-            size_t proj_x, proj_y, proj_z;
+            coord_t proj_x, proj_y, proj_z;
             rotation_get_projection(rot, index, coords->x_len, coords->y_len,
                     coords->z_len, &proj_x, &proj_y, &proj_z);
 
@@ -119,12 +119,12 @@ static void normalize_cube(const struct cube_coords *coords,
         .z_len = lengths_by_axis[3 - norm_rot->axis_order[0] - norm_rot->axis_order[1]],
     };
 
-    for (size_t x = 0; x < normalized->x_len; x++) {
-        for (size_t y = 0; y < normalized->y_len; y++) {
-            for (size_t z = 0; z < normalized->z_len; z++) {
+    for (coord_t x = 0; x < normalized->x_len; x++) {
+        for (coord_t y = 0; y < normalized->y_len; y++) {
+            for (coord_t z = 0; z < normalized->z_len; z++) {
                 size_t index =
                     (x * normalized->y_len + y) * normalized->z_len + z;
-                size_t proj_x, proj_y, proj_z;
+                coord_t proj_x, proj_y, proj_z;
                 rotation_get_projection(norm_rot, index, coords->x_len,
                         coords->y_len, coords->z_len, &proj_x, &proj_y, &proj_z);
                 if (coord_get(coords, proj_x, proj_y, proj_z)) {
@@ -144,13 +144,13 @@ static void find_next_cubes_for_cube(const cube_t *cube, size_t size,
     struct cube_coords shifted_x = { .coords = { 0 } };
     struct cube_coords shifted_y = { .coords = { 0 } };
     struct cube_coords shifted_z = { .coords = { 0 } };
-    size_t max_x = 0;
-    size_t max_y = 0;
-    size_t max_z = 0;
+    coord_t max_x = 0;
+    coord_t max_y = 0;
+    coord_t max_z = 0;
     for (size_t i = 0; i < size; i++) {
-        size_t x = cube->coords[i][0];
-        size_t y = cube->coords[i][1];
-        size_t z = cube->coords[i][2];
+        coord_t x = cube->coords[i][0];
+        coord_t y = cube->coords[i][1];
+        coord_t z = cube->coords[i][2];
         coord_set(&orig, x, y, z);
         coord_set(&shifted_x, x + 1, y, z);
         coord_set(&shifted_y, x, y + 1, z);
@@ -189,9 +189,9 @@ static void find_next_cubes_for_cube(const cube_t *cube, size_t size,
     /* Try inserting a new cube at each potential position and insert it into
      * the next list if the cube may be placed there. A cube may only be placed
      * if it is adjacent to another cube. */
-    for (size_t i = 0; i < orig.x_len + 2; i++) {
-        for (size_t j = 0; j < orig.y_len + 2; j++) {
-            for (size_t k = 0; k < orig.z_len + 2; k++) {
+    for (coord_t i = 0; i < orig.x_len + 2; i++) {
+        for (coord_t j = 0; j < orig.y_len + 2; j++) {
+            for (coord_t k = 0; k < orig.z_len + 2; k++) {
                 /* Skip locations already populated. */
                 if (i > 0 && j > 0 && k > 0
                         && coord_get(&orig, i - 1, j - 1, k - 1)) {
