@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -22,11 +23,23 @@ struct cube_stat {
 static struct cube_stat all_cubes[MAX_DIM];
 
 struct cube_coords {
-    bool coords[MAX_DIM][MAX_DIM][MAX_DIM];
+    unsigned char coords[CEIL_DIV(MAX_DIM * MAX_DIM * MAX_DIM,  CHAR_BIT)];
     size_t x_len;
     size_t y_len;
     size_t z_len;
 };
+
+static inline bool coord_get(const struct cube_coords *coords, size_t x,
+        size_t y, size_t z) {
+    size_t bit_idx = (x * MAX_DIM + y) * MAX_DIM + z;
+    return (coords->coords[bit_idx / CHAR_BIT] >> (bit_idx % CHAR_BIT)) & 1;
+}
+
+static inline void coord_set(struct cube_coords *coords, size_t x, size_t y,
+        size_t z) {
+    size_t bit_idx = (x * MAX_DIM + y) * MAX_DIM + z;
+    coords->coords[bit_idx / CHAR_BIT] |= 1u << (bit_idx % CHAR_BIT);
+}
 
 static void normalize_cube(const struct cube_coords *coords,
         struct cube_coords *normalized) {
@@ -73,7 +86,7 @@ static void normalize_cube(const struct cube_coords *coords,
             rotation_get_projection(rot, index, coords->x_len, coords->y_len,
                     coords->z_len, &proj_x, &proj_y, &proj_z);
 
-            if (coords->coords[proj_x][proj_y][proj_z]) {
+            if (coord_get(coords, proj_x, proj_y, proj_z)) {
                 rotation_found[i] = true;
                 found_count++;
                 if (found_count == 1) {
@@ -114,8 +127,8 @@ static void normalize_cube(const struct cube_coords *coords,
                 size_t proj_x, proj_y, proj_z;
                 rotation_get_projection(norm_rot, index, coords->x_len,
                         coords->y_len, coords->z_len, &proj_x, &proj_y, &proj_z);
-                if (coords->coords[proj_x][proj_y][proj_z]) {
-                    normalized->coords[x][y][z] = true;
+                if (coord_get(coords, proj_x, proj_y, proj_z)) {
+                    coord_set(normalized, x, y, z);
                 }
             }
         }
@@ -127,10 +140,10 @@ static void find_next_cubes_for_cube(const cube_t *cube, size_t size,
     /* Generate regular and shifted coordinates structures from polycube. There
      * will be 3 shifted polycubes each shifted 1 in a positive direction to
      * create a gap all around the polycube. */
-    struct cube_coords orig = { .coords = { { { false } } } };
-    struct cube_coords shifted_x = { .coords = { { { false } } } };
-    struct cube_coords shifted_y = { .coords = { { { false } } } };
-    struct cube_coords shifted_z = { .coords = { { { false } } } };
+    struct cube_coords orig = { .coords = { 0 } };
+    struct cube_coords shifted_x = { .coords = { 0 } };
+    struct cube_coords shifted_y = { .coords = { 0 } };
+    struct cube_coords shifted_z = { .coords = { 0 } };
     size_t max_x = 0;
     size_t max_y = 0;
     size_t max_z = 0;
@@ -138,10 +151,10 @@ static void find_next_cubes_for_cube(const cube_t *cube, size_t size,
         size_t x = cube->coords[i][0];
         size_t y = cube->coords[i][1];
         size_t z = cube->coords[i][2];
-        orig.coords[x][y][z] = true;
-        shifted_x.coords[x + 1][y][z] = true;
-        shifted_y.coords[x][y + 1][z] = true;
-        shifted_z.coords[x][y][z + 1] = true;
+        coord_set(&orig, x, y, z);
+        coord_set(&shifted_x, x + 1, y, z);
+        coord_set(&shifted_y, x, y + 1, z);
+        coord_set(&shifted_z, x, y, z + 1);
         if (x > max_x) {
             max_x = x;
         }
@@ -181,17 +194,17 @@ static void find_next_cubes_for_cube(const cube_t *cube, size_t size,
             for (size_t k = 0; k < orig.z_len + 2; k++) {
                 /* Skip locations already populated. */
                 if (i > 0 && j > 0 && k > 0
-                        && orig.coords[i - 1][j - 1][k - 1]) {
+                        && coord_get(&orig, i - 1, j - 1, k - 1)) {
                     continue;
                 }
 
                 /* Skip locations not adjacent to a cube. */
-                if (!(i > 1 && j > 0 && k > 0 && orig.coords[i - 2][j - 1][k - 1])
-                        && !(i > 0 && j > 1 && k > 0 && orig.coords[i - 1][j - 2][k - 1])
-                        && !(i > 0 && j > 0 && k > 1 && orig.coords[i - 1][j - 1][k - 2])
-                        && !(j > 0 && k > 0 && orig.coords[i][j - 1][k - 1])
-                        && !(i > 0 && k > 0 && orig.coords[i - 1][j][k - 1])
-                        && !(i > 0 && j > 0 && orig.coords[i - 1][j - 1][k])) {
+                if (!(i > 1 && j > 0 && k > 0 && coord_get(&orig, i - 2, j - 1, k - 1))
+                        && !(i > 0 && j > 1 && k > 0 && coord_get(&orig, i - 1, j - 2, k - 1))
+                        && !(i > 0 && j > 0 && k > 1 && coord_get(&orig, i - 1, j - 1, k - 2))
+                        && !(j > 0 && k > 0 && coord_get(&orig, i, j - 1, k - 1))
+                        && !(i > 0 && k > 0 && coord_get(&orig, i - 1, j, k - 1))
+                        && !(i > 0 && j > 0 && coord_get(&orig, i - 1, j - 1, k))) {
                     continue;
                 }
 
@@ -199,16 +212,16 @@ static void find_next_cubes_for_cube(const cube_t *cube, size_t size,
                 struct cube_coords candidate;
                 if (i == 0) {
                     candidate = shifted_x;
-                    candidate.coords[i][j - 1][k - 1] = true;
+                    coord_set(&candidate, i, j - 1, k - 1);
                 } else if (j == 0) {
                     candidate = shifted_y;
-                    candidate.coords[i - 1][j][k - 1] = true;
+                    coord_set(&candidate, i - 1, j, k - 1);
                 } else if (k == 0) {
                     candidate = shifted_z;
-                    candidate.coords[i - 1][j - 1][k] = true;
+                    coord_set(&candidate, i - 1, j - 1, k);
                 } else {
                     candidate = orig;
-                    candidate.coords[i - 1][j - 1][k - 1] = true;
+                    coord_set(&candidate, i - 1, j - 1, k - 1);
                     if (i == orig.x_len + 1) {
                         candidate.x_len++;
                     } else if (j == orig.y_len + 1) {
@@ -227,7 +240,7 @@ static void find_next_cubes_for_cube(const cube_t *cube, size_t size,
                 for (size_t x = 0; x < normalized_coords.x_len; x++) {
                     for (size_t y = 0; y < normalized_coords.y_len; y++) {
                         for (size_t z = 0; z < normalized_coords.z_len; z++) {
-                            if (normalized_coords.coords[x][y][z]) {
+                            if (coord_get(&normalized_coords, x, y, z)) {
                                 normalized->coords[coord_idx][0] = x;
                                 normalized->coords[coord_idx][1] = y;
                                 normalized->coords[coord_idx][2] = z;
